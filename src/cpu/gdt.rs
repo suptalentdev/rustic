@@ -14,7 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-use zero;
+use core;
+use core::intrinsics::size_of;
 
 type gdttable = [gdtentry, ..16];
 
@@ -43,7 +44,7 @@ impl gdtreg {
     pub fn new(gdt: *gdttable) -> gdtreg {
         gdtreg {
             addr: gdt,
-            limit: unsafe { zero::size_of::<gdttable>() + 1 } as u16,
+            limit: (size_of::<gdttable>() + 1) as u16,
         }
     }
 }
@@ -61,37 +62,36 @@ impl gdtentry {
     }
 }
 
-static mut systemgdt: table = table {
-    table: 0 as *mut gdttable,
-    reg: 0 as *mut gdtreg,
-};
+impl table {
+    #[fixed_stack_segment]
+    pub fn init() -> table {
+        let table = unsafe { core::libc::malloc(128) } as *mut gdttable;
+        let reg = unsafe { core::libc::malloc(6) } as *mut gdtreg;
+        unsafe { *reg = gdtreg::new(table as *gdttable) };
 
-#[fixed_stack_segment]
-pub fn init() {
-    unsafe {
-        systemgdt.table = zero::malloc(128) as *mut gdttable;
-        systemgdt.reg = zero::malloc(6) as *mut gdtreg;
-        *systemgdt.reg = gdtreg::new(systemgdt.table as *gdttable);
+        table {
+            reg: reg,
+            table: table,
+        }
+    }
+
+    pub fn entry(&self, index: int, base: uint, limit: uint, access: u8, gran: u8) {
+        unsafe {
+            (*self.table)[index] = gdtentry::new(base, limit, access, gran);
+        }
+    }
+
+    pub fn load(&self, codeseg: u16, dataseg: u16, tlsemulseg: u16) {
+        unsafe { asm!(" \
+            lgdt ($0); \
+            jmp $1, $$.g; \
+            .g: \
+            mov $2, %ax; \
+            mov %ax, %ds; \
+            mov %ax, %es; \
+            mov %ax, %fs; \
+            mov %ax, %ss; \
+            mov $3, %ax; \
+            mov %ax, %gs;" :: "r" (self.reg), "Ir" (codeseg), "Ir" (dataseg), "Ir" (tlsemulseg) : "ax"); }
     }
 }
-
-pub fn load(codeseg: u16, dataseg: u16, tlsemulseg: u16) {
-    unsafe { asm!(" \
-        lgdt ($0); \
-        jmp $1, $$.g; \
-        .g: \
-        mov $2, %ax; \
-        mov %ax, %ds; \
-        mov %ax, %es; \
-        mov %ax, %fs; \
-        mov %ax, %ss; \
-        mov $3, %ax; \
-        mov %ax, %gs;" :: "r" (systemgdt.reg), "Ir" (codeseg), "Ir" (dataseg), "Ir" (tlsemulseg) : "ax"); }
-}
-
-pub fn entry(index: int, base: uint, limit: uint, access: u8, gran: u8) {
-    unsafe {
-        (*systemgdt.table)[index] = gdtentry::new(base, limit, access, gran);
-    }
-}
-
