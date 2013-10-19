@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-use core;
+use zero;
 use io;
 
 pub enum Parity {
@@ -93,7 +93,7 @@ fn writechar(c: u8) {
 pub fn write(s: &str) {
     // Pull out the buffer length from the str
     let (_, buflen): (*u8, uint) = unsafe {
-        core::intrinsics::transmute(s)
+        zero::transmute(s)
     };
 
     let mut index = 0;
